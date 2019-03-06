@@ -591,7 +591,7 @@ coreToAttr t =
 coreToAttrs'
     :: [Type]
     -> State GHC2CoreState [C.Attr']
-coreToAttrs' [annotationType, _star, realType, attributes] = allAttrs
+coreToAttrs' [annotationType, realType, attributes] = allAttrs
  where
   allAttrs = (++) <$> attrs <*> subAttrs
 
@@ -608,7 +608,7 @@ coreToAttrs' [annotationType, _star, realType, attributes] = allAttrs
                       -- List of attributes
                       sequence $ map coreToAttr (listTypeToListOfTypes attributes)
                    | name' == "GHC.Types.[]" =
-                      -- List, but uknown types
+                      -- List, but unknown types
                       error $ $(curLoc) ++ unwords [ "Annotate expects an"
                                                    , "Attr or a list of"
                                                    , "Attr's, but got a list"
@@ -639,7 +639,7 @@ coreToAttrs' [annotationType, _star, realType, attributes] = allAttrs
                                      , showPpr unsafeGlobalDynFlags annotationType]
 
 coreToAttrs' illegal =
-  error $ "Expected list with four items (as Annotate has four arguments), but got: "
+  error $ "Expected list with three items (as Annotate has three arguments), but got: "
       ++ show (map (showPpr unsafeGlobalDynFlags) illegal)
 
 -- | If this type has an annotate type synonym, return list of attributes.
@@ -658,7 +658,7 @@ coreToAttrs (TyConApp tycon kindsOrTypes) = do
 coreToAttrs _ =
     return []
 
--- | Wrap given type in annotation if is annotated using the contructs
+-- | Wrap given type in an annotation if it is annotated using the constructs
 -- defined in Clash.Annotations.SynthesisAttributes.
 annotateType
   :: Type
