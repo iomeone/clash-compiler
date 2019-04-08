@@ -3222,9 +3222,6 @@ reduceConstant isSubj gbl tcm h k nm ty tys args = case nm of
          _ -> Nothing
   _ -> Nothing
   where
-    evalUndefined nTy =
-      mkApps (Prim "Clash.GHC.Evaluator.undefined" undefinedTy) [Right nTy]
-
     checkNaturalRange1 nTy i f =
       checkNaturalRange nTy [i]
         (\[i'] -> naturalToNaturalLiteral (f i'))
@@ -3255,6 +3252,9 @@ reduceConstant isSubj gbl tcm h k nm ty tys args = case nm of
                    in  Just (h2,k,e')
     reduceWHNF' h' e = let (h2,[],e') = whnf reduceConstant gbl tcm isSubj (h',[],e)
                        in  Just (h2,k,e')
+
+evalUndefined :: Type -> Term
+evalUndefined resTy = TyApp (Prim "Clash.GHC.Evaluator.undefined" undefinedTy) resTy
 
 typedLiterals' :: (Value -> Maybe a) -> [Value] -> [a]
 typedLiterals' typedLiteral = mapMaybe typedLiteral
@@ -3594,10 +3594,7 @@ mkIndexLitE rTy nTy kn val
   , val < kn
   = Right (mkSizedLit indexConPrim rTy nTy kn val)
   | otherwise
-  = Left
-      ( TyApp
-          (Prim "Clash.GHC.Evaluator.undefined" undefinedTy)
-          (mkTyConApp indexTcNm [nTy]) )
+  = Left ( evalUndefined (mkTyConApp indexTcNm [nTy]) )
   where
     TyConApp indexTcNm _ = tyView (snd (splitFunForallTy rTy))
 
