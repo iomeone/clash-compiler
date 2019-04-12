@@ -178,6 +178,7 @@ runClashTest =
       , clashTestGroup "Numbers"
         [ runTest ("tests" </> "shouldwork" </> "Numbers") defBuild [] "BitInteger"   (["","BitInteger_testBench"],"BitInteger_testBench",True)
         , runTest ("tests" </> "shouldwork" </> "Numbers") defBuild [] "Bounds"       (["","Bounds_testBench"],"Bounds_testBench",True)
+        , runTest ("tests" </> "shouldwork" </> "Numbers") defBuild [] "DivByZero"    (["","DivByZero_testBench"],"DivByZero_testBench",True)
         , runTest ("tests" </> "shouldwork" </> "Numbers") defBuild ["-itests/shouldwork/Numbers", "-fconstraint-solver-iterations=15"] "ExpWithGhcCF"        (["","ExpWithGhcCF_testBench"],"ExpWithGhcCF_testBench",True)
         , runTest ("tests" </> "shouldwork" </> "Numbers") defBuild ["-itests/shouldwork/Numbers", "-fconstraint-solver-iterations=15"] "ExpWithClashCF"        (["","ExpWithClashCF_testBench"],"ExpWithClashCF_testBench",True)
         , outputTest ("tests" </> "shouldwork" </> "Numbers") defBuild ["-itests/shouldwork/Numbers"] ["-itests/shouldwork/Numbers"] "ExpWithClashCF"  "main"
