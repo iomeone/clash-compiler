@@ -1666,7 +1666,7 @@ reduceConst ctx@(TransformContext is0 _) e@(App _ _)
           bindPureHeap ctx tcm ph' $ \_ctx' -> case e' of
             (Literal _) -> changed e'
             (collectArgs -> (Prim nm _, _))
-              | isFromInt nm
+              | isFromInt nm || nm == "Clash.GHC.Evaluator.undefined"
               , e /= e'
               -> changed e'
             (collectArgs -> (Data _,_)) -> changed e'
