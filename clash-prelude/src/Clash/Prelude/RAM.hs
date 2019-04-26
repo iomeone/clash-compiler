@@ -22,7 +22,7 @@ RAM primitives with a combinational read port.
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Clash.Prelude.RAM
-  ( -- * RAM synchronised to an arbitrary clock
+  ( -- * RAM synchronized to an arbitrary clock
     asyncRam
   , asyncRamPow2
   )
@@ -46,14 +46,17 @@ import           Clash.Sized.Unsigned (Unsigned)
 -- * See "Clash.Prelude.BlockRam#usingrams" for more information on how to use a
 -- RAM.
 asyncRam
-  :: (Enum addr, HiddenClock domain gated, HasCallStack)
+  :: ( Enum addr
+     , HiddenClock tag enabled dom
+     , HasCallStack
+     )
   => SNat n
   -- ^ Size @n@ of the RAM
-  -> Signal domain addr
+  -> Signal tag addr
   -- ^ Read address @r@
-  -> Signal domain (Maybe (addr, a))
+  -> Signal tag (Maybe (addr, a))
    -- ^ (write address @w@, value to write)
-  -> Signal domain a
+  -> Signal tag a
    -- ^ Value of the @RAM@ at address @r@
 asyncRam = \sz rd wrM -> withFrozenCallStack
   (hideClock (\clk -> E.asyncRam clk clk sz rd wrM))
@@ -68,12 +71,14 @@ asyncRam = \sz rd wrM -> withFrozenCallStack
 -- * See "Clash.Prelude.BlockRam#usingrams" for more information on how to use a
 -- RAM.
 asyncRamPow2
-  :: (KnownNat n, HiddenClock domain gated, HasCallStack)
-  => Signal domain (Unsigned n)
+  :: ( KnownNat n
+     , HiddenClock tag enabled dom
+     , HasCallStack )
+  => Signal tag (Unsigned n)
   -- ^ Read address @r@
-  -> Signal domain (Maybe (Unsigned n, a))
+  -> Signal tag (Maybe (Unsigned n, a))
   -- ^ (write address @w@, value to write)
-  -> Signal domain a
+  -> Signal tag a
   -- ^ Value of the @RAM@ at address @r@
 asyncRamPow2 = \rd wrM -> withFrozenCallStack
   (hideClock (\clk -> E.asyncRamPow2 clk clk rd wrM))

@@ -33,7 +33,7 @@ We can instantiate a synchronous ROM using the content of the above file like
 so:
 
 @
-f :: HiddenClock domain => Signal domain (Unsigned 3) -> Signal domain (Unsigned 9)
+f :: HiddenClock tag => Signal tag (Unsigned 3) -> Signal tag (Unsigned 9)
 f rd = 'Clash.Class.BitPack.unpack' '<$>' 'romFile' d7 \"memory.bin\" rd
 @
 
@@ -49,7 +49,7 @@ However, we can also interpret the same data as a tuple of a 6-bit unsigned
 number, and a 3-bit signed number:
 
 @
-g :: HiddenClock domain => Signal domain (Unsigned 3) -> Signal domain (Unsigned 6,Signed 3)
+g :: HiddenClock tag => Signal tag (Unsigned 3) -> Signal tag (Unsigned 6,Signed 3)
 g rd = 'Clash.Class.BitPack.unpack' '<$>' 'romFile' d7 \"memory.bin\" rd
 @
 
@@ -77,7 +77,7 @@ module Clash.Prelude.ROM.File
   ( -- * Asynchronous ROM
     asyncRomFile
   , asyncRomFilePow2
-    -- * Synchronous ROM synchronised to an arbitrary clock
+    -- * Synchronous ROM synchronized to an arbitrary clock
   , romFile
   , romFilePow2
     -- * Internal
@@ -258,11 +258,11 @@ asyncRomFile# sz file = (content !) -- Leave "(content !)" eta-reduced, see
 -- * See "Clash.Sized.Fixed#creatingdatafiles" for ideas on how to create your
 -- own data files.
 romFile
-  :: (KnownNat m, KnownNat n, HiddenClock domain gated)
+  :: (KnownNat m, KnownNat n, HiddenClock tag gated dom)
   => SNat n               -- ^ Size of the ROM
   -> FilePath             -- ^ File describing the content of the ROM
-  -> Signal domain (Unsigned n)  -- ^ Read address @rd@
-  -> Signal domain (BitVector m)
+  -> Signal tag (Unsigned n)  -- ^ Read address @rd@
+  -> Signal tag (BitVector m)
   -- ^ The value of the ROM at address @rd@ from the previous clock cycle
 romFile = hideClock E.romFile
 {-# INLINE romFile #-}
@@ -291,11 +291,11 @@ romFile = hideClock E.romFile
 -- * See "Clash.Sized.Fixed#creatingdatafiles" for ideas on how to create your
 -- own data files.
 romFilePow2
-  :: forall n m domain gated
-   . (KnownNat m, KnownNat n, HiddenClock domain gated)
+  :: forall n m tag gated dom
+   . (KnownNat m, KnownNat n, HiddenClock tag gated dom)
   => FilePath                    -- ^ File describing the content of the ROM
-  -> Signal domain (Unsigned n)  -- ^ Read address @rd@
-  -> Signal domain (BitVector m)
+  -> Signal tag (Unsigned n)  -- ^ Read address @rd@
+  -> Signal tag (BitVector m)
   -- ^ The value of the ROM at address @rd@ from the previous clock cycle
 romFilePow2 = hideClock E.romFilePow2
 {-# INLINE romFilePow2 #-}

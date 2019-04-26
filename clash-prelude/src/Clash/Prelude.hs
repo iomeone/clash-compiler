@@ -7,7 +7,7 @@
   Clash is a functional hardware description language that borrows both its
   syntax and semantics from the functional programming language Haskell. The
   merits of using a functional language to describe hardware comes from the fact
-  that combinational circuits can be directly modeled as mathematical functions
+  that combinatorial circuits can be directly modeled as mathematical functions
   and that functional languages lend themselves very well at describing and
   (de-)composing mathematical functions.
 
@@ -41,7 +41,7 @@
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Clash.Prelude
-  ( -- * Creating synchronous sequential circuits
+  ( -- * Creating polarity sequential circuits
     mealy
   , mealyB
   , (<^>)
@@ -185,9 +185,9 @@ import           Clash.Signal.Trace
 import           Clash.XException
 
 {- $setup
->>> :set -XDataKinds -XFlexibleContexts
->>> let window4  = window  :: HiddenClockReset domain gated synchronous => Signal domain Int -> Vec 4 (Signal domain Int)
->>> let windowD3 = windowD :: HiddenClockReset domain gated synchronous => Signal domain Int -> Vec 3 (Signal domain Int)
+>>> :set -XDataKinds -XFlexibleContexts -XTypeApplications
+>>> let window4  = window  :: HiddenClockReset tag enabled polarity dom => Signal tag Int -> Vec 4 (Signal tag Int)
+>>> let windowD3 = windowD :: HiddenClockReset tag enabled polarity dom => Signal tag Int -> Vec 3 (Signal tag Int)
 -}
 
 {- $hiding
@@ -203,38 +203,42 @@ It instead exports the identically named functions defined in terms of
 
 -- | Give a window over a 'Signal'
 --
--- > window4 :: HiddenClockReset domain gated synchronous
--- >         => Signal domain Int -> Vec 4 (Signal domain Int)
+-- > window4 :: HiddenClockReset tag enabled polarity dom
+-- >         => Signal tag Int -> Vec 4 (Signal tag Int)
 -- > window4 = window
 --
--- >>> simulateB window4 [1::Int,2,3,4,5] :: [Vec 4 Int]
+-- >>> simulateB @System window4 [1::Int,2,3,4,5] :: [Vec 4 Int]
 -- [<1,0,0,0>,<2,1,0,0>,<3,2,1,0>,<4,3,2,1>,<5,4,3,2>...
 -- ...
 window
-  :: ( HiddenClockReset domain gated synchronous
+  :: ( HiddenClockReset tag enabled polarity dom
      , KnownNat n
      , Default a
      , Undefined a )
-  => Signal domain a                -- ^ Signal to create a window over
-  -> Vec (n + 1) (Signal domain a)  -- ^ Window of at least size 1
+  => Signal tag a
+  -- ^ Signal to create a window over
+  -> Vec (n + 1) (Signal tag a)
+  -- ^ Window of at least size 1
 window = hideClockReset E.window
 {-# INLINE window #-}
 
 -- | Give a delayed window over a 'Signal'
 --
--- > windowD3 :: HiddenClockReset domain gated synchronous
--- >          => Signal domain Int -> Vec 3 (Signal domain Int)
+-- > windowD3 :: HiddenClockReset tag enabled polarity dom
+-- >          => Signal tag Int -> Vec 3 (Signal tag Int)
 -- > windowD3 = windowD
 --
--- >>> simulateB windowD3 [1::Int,2,3,4] :: [Vec 3 Int]
+-- >>> simulateB @System windowD3 [1::Int,2,3,4] :: [Vec 3 Int]
 -- [<0,0,0>,<1,0,0>,<2,1,0>,<3,2,1>,<4,3,2>...
 -- ...
 windowD
-  :: ( HiddenClockReset domain gated synchronous
+  :: ( HiddenClockReset tag enabled polarity dom
      , KnownNat n
      , Default a
      , Undefined a )
-  => Signal domain a               -- ^ Signal to create a window over
-  -> Vec (n + 1) (Signal domain a) -- ^ Window of at least size 1
+  => Signal tag a
+  -- ^ Signal to create a window over
+  -> Vec (n + 1) (Signal tag a)
+  -- ^ Window of at least size 1
 windowD = hideClockReset E.windowD
 {-# INLINE windowD #-}

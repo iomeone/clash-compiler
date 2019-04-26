@@ -26,7 +26,7 @@ RAM primitives with a combinational read port.
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Clash.Explicit.RAM
-  ( -- * RAM synchronised to an arbitrary clock
+  ( -- * RAM synchronized to an arbitrary clock
     asyncRam
   , asyncRamPow2
     -- * Internal
@@ -39,7 +39,7 @@ import GHC.Stack             (HasCallStack, withFrozenCallStack)
 import GHC.TypeLits          (KnownNat)
 import qualified Data.Vector as V
 
-import Clash.Explicit.Signal ((.&&.), unbundle, unsafeSynchronizer)
+import Clash.Explicit.Signal ((.&&.), unbundle, unsafeSynchronizer, KnownDomain)
 import Clash.Promoted.Nat    (SNat (..), snatToNum, pow2SNat)
 import Clash.Signal.Internal (Clock (..), Signal (..), clockEnable)
 import Clash.Sized.Unsigned  (Unsigned)
@@ -54,17 +54,21 @@ import Clash.XException      (errorX, maybeIsX)
 -- * See "Clash.Prelude.BlockRam#usingrams" for more information on how to use a
 -- RAM.
 asyncRamPow2
-  :: forall wdom rdom wgated rgated n a
-   . (KnownNat n, HasCallStack)
-  => Clock wdom wgated
+  :: forall wtag rtag wenabled renabled wconf rconf n a
+   . ( KnownNat n
+     , HasCallStack
+     , KnownDomain wtag wconf
+     , KnownDomain rtag rconf
+     )
+  => Clock wtag wenabled
   -- ^ 'Clock' to which to synchronise the write port of the RAM
-  -> Clock rdom rgated
-  -- ^ 'Clock' to which the read address signal, @r@, is synchronised
-  -> Signal rdom (Unsigned n)
+  -> Clock rtag renabled
+  -- ^ 'Clock' to which the read address signal, @r@, is synchronized
+  -> Signal rtag (Unsigned n)
   -- ^ Read address @r@
-  -> Signal wdom (Maybe (Unsigned n, a))
+  -> Signal wtag (Maybe (Unsigned n, a))
   -- ^ (write address @w@, value to write)
-  -> Signal rdom a
+  -> Signal rtag a
   -- ^ Value of the @RAM@ at address @r@
 asyncRamPow2 = \wclk rclk rd wrM -> withFrozenCallStack
   (asyncRam wclk rclk (pow2SNat (SNat @ n)) rd wrM)
@@ -80,18 +84,22 @@ asyncRamPow2 = \wclk rclk rd wrM -> withFrozenCallStack
 -- * See "Clash.Explicit.BlockRam#usingrams" for more information on how to use a
 -- RAM.
 asyncRam
-  :: (Enum addr, HasCallStack)
-  => Clock wdom wgated
+  :: ( Enum addr
+     , HasCallStack
+     , KnownDomain wtag wconf
+     , KnownDomain rtag rconf
+     )
+  => Clock wtag wenabled
    -- ^ 'Clock' to which to synchronise the write port of the RAM
-  -> Clock rdom rgated
-   -- ^ 'Clock' to which the read address signal, @r@, is synchronised
+  -> Clock rtag renabled
+   -- ^ 'Clock' to which the read address signal, @r@, is synchronized
   -> SNat n
   -- ^ Size @n@ of the RAM
-  -> Signal rdom addr
+  -> Signal rtag addr
   -- ^ Read address @r@
-  -> Signal wdom (Maybe (addr, a))
+  -> Signal wtag (Maybe (addr, a))
   -- ^ (write address @w@, value to write)
-  -> Signal rdom a
+  -> Signal rtag a
    -- ^ Value of the @RAM@ at address @r@
 asyncRam = \wclk rclk sz rd wrM ->
   let en       = isJust <$> wrM
@@ -102,17 +110,19 @@ asyncRam = \wclk rclk sz rd wrM ->
 
 -- | RAM primitive
 asyncRam#
-  :: HasCallStack
-  => Clock wdom wgated
+  :: ( HasCallStack
+     , KnownDomain wtag wconf
+     , KnownDomain rtag rconf )
+  => Clock wtag wenabled
   -- ^ 'Clock' to which to synchronise the write port of the RAM
-  -> Clock rdom rgated
-  -- ^ 'Clock' to which the read address signal, @r@, is synchronised
+  -> Clock rtag renabled
+  -- ^ 'Clock' to which the read address signal, @r@, is synchronized
   -> SNat n            -- ^ Size @n@ of the RAM
-  -> Signal rdom Int  -- ^ Read address @r@
-  -> Signal wdom Bool -- ^ Write enable
-  -> Signal wdom Int  -- ^ Write address @w@
-  -> Signal wdom a    -- ^ Value to write (at address @w@)
-  -> Signal rdom a    -- ^ Value of the @RAM@ at address @r@
+  -> Signal rtag Int  -- ^ Read address @r@
+  -> Signal wtag Bool -- ^ Write enable
+  -> Signal wtag Int  -- ^ Write address @w@
+  -> Signal wtag a    -- ^ Value to write (at address @w@)
+  -> Signal rtag a    -- ^ Value of the @RAM@ at address @r@
 asyncRam# wclk rclk sz rd en wr din =
     unsafeSynchronizer wclk rclk dout
   where
@@ -125,8 +135,8 @@ asyncRam# wclk rclk sz rd en wr din =
              Just wgt -> wgt .&&. en
     dout = go ramI rd' en' wr din
 
-    go :: V.Vector a -> Signal wdom Int -> Signal wdom Bool
-       -> Signal wdom Int -> Signal wdom a -> Signal wdom a
+    go :: V.Vector a -> Signal wtag Int -> Signal wtag Bool
+       -> Signal wtag Int -> Signal wtag a -> Signal wtag a
     go !ram (r :- rs) (e :- es) (w :- ws) (d :- ds) =
       let ram' = upd ram e (fromEnum w) d
           o    = ram V.! r

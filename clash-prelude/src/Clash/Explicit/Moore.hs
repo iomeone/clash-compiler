@@ -23,7 +23,7 @@ module Clash.Explicit.Moore
 where
 
 import           Clash.Explicit.Signal
-  (Bundle (..), Clock, Reset, Signal, register)
+  (KnownDomain, Bundle (..), Clock, Reset, Signal, register)
 import           Clash.XException                 (Undefined)
 
 {- $setup
@@ -56,32 +56,33 @@ import           Clash.XException                 (Undefined)
 -- ...
 --
 -- Synchronous sequential functions can be composed just like their
--- combinational counterpart:
+-- combinatorial counterpart:
 --
 -- @
 -- dualMac
---   :: Clock domain gated
---   -> Reset domain synchronous
---   -> ('Signal' domain Int, 'Signal' domain Int)
---   -> ('Signal' domain Int, 'Signal' domain Int)
---   -> 'Signal' domain Int
+--   :: Clock tag gated
+--   -> Reset tag synchronous
+--   -> ('Signal' tag Int, 'Signal' tag Int)
+--   -> ('Signal' tag Int, 'Signal' tag Int)
+--   -> 'Signal' tag Int
 -- dualMac clk rst (a,b) (x,y) = s1 + s2
 --   where
 --     s1 = 'moore' clk rst mac id 0 ('bundle' (a,x))
 --     s2 = 'moore' clk rst mac id 0 ('bundle' (b,y))
 -- @
 moore
-  :: Undefined s
-  => Clock domain gated
+  :: ( KnownDomain tag dom
+     , Undefined s )
+  => Clock tag gated
   -- ^ 'Clock' to synchronize to
-  -> Reset domain synchronous
+  -> Reset tag synchronous
   -> (s -> i -> s)
   -- ^ Transfer function in moore machine form: @state -> input -> newstate@
   -> (s -> o)
   -- ^ Output function in moore machine form: @state -> output@
   -> s
   -- ^ Initial state
-  -> (Signal domain i -> Signal domain o)
+  -> (Signal tag i -> Signal tag o)
   -- ^ Synchronous sequential function with input and output matching that
   -- of the moore machine
 moore clk rst ft fo iS =
@@ -93,12 +94,13 @@ moore clk rst ft fo iS =
 -- | Create a synchronous function from a combinational function describing
 -- a moore machine without any output logic
 medvedev
-  :: Undefined s
-  => Clock domain gated
-  -> Reset domain synchronous
+  :: ( KnownDomain tag dom
+     , Undefined s )
+  => Clock tag gated
+  -> Reset tag synchronous
   -> (s -> i -> s)
   -> s
-  -> (Signal domain i -> Signal domain s)
+  -> (Signal tag i -> Signal tag s)
 medvedev clk rst tr st = moore clk rst tr id st
 {-# INLINE medvedev #-}
 
@@ -130,17 +132,18 @@ medvedev clk rst tr st = moore clk rst tr id st
 --     (i2,b2) = 'mooreB' clk rst t o 3 (i1,c)
 -- @
 mooreB
-  :: ( Undefined s
+  :: ( KnownDomain tag dom
+     , Undefined s
      , Bundle i
      , Bundle o )
-  => Clock domain gated
-  -> Reset domain synchronous
+  => Clock tag gated
+  -> Reset tag synchronous
   -> (s -> i -> s) -- ^ Transfer function in moore machine form:
                    -- @state -> input -> newstate@
   -> (s -> o)      -- ^ Output function in moore machine form:
                    -- @state -> output@
   -> s             -- ^ Initial state
-  -> (Unbundled domain i -> Unbundled domain o)
+  -> (Unbundled tag i -> Unbundled tag o)
   -- ^ Synchronous sequential function with input and output matching that
   -- of the moore machine
 mooreB clk rst ft fo iS i = unbundle (moore clk rst ft fo iS (bundle i))
@@ -148,13 +151,14 @@ mooreB clk rst ft fo iS i = unbundle (moore clk rst ft fo iS (bundle i))
 
 -- | A version of 'medvedev' that does automatic 'Bundle'ing
 medvedevB
-  :: ( Undefined s
+  :: ( KnownDomain tag dom
+     , Undefined s
      , Bundle i
      , Bundle s )
-  => Clock domain gated
-  -> Reset domain synchronous
+  => Clock tag gated
+  -> Reset tag synchronous
   -> (s -> i -> s)
   -> s
-  -> (Unbundled domain i -> Unbundled domain s)
+  -> (Unbundled tag i -> Unbundled tag s)
 medvedevB clk rst tr st = mooreB clk rst tr id st
 {-# INLINE medvedevB #-}

@@ -27,7 +27,7 @@ module Clash.Explicit.Prelude.Safe
   , moore
   , mooreB
   , registerB
-    -- * Synchronizer circuits for safe clock domain crossing
+    -- * Synchronizer circuits for safe clock tag crossing
   , dualFlipFlopSynchronizer
   , asyncFIFOSynchronizer
     -- * ROMs
@@ -155,9 +155,9 @@ import Clash.XException
 -- @('Signal' a, 'Signal' b)@)
 --
 -- @
--- rP :: Clock domain gated -> Reset domain synchronous
---    -> ('Signal' domain Int, 'Signal' domain Int)
---    -> ('Signal' domain Int, 'Signal' domain Int)
+-- rP :: Clock tag enabled -> Reset tag synchronous
+--    -> ('Signal' tag Int, 'Signal' tag Int)
+--    -> ('Signal' tag Int, 'Signal' tag Int)
 -- rP clk rst = 'registerB' clk rst (8,8)
 -- @
 --
@@ -165,23 +165,28 @@ import Clash.XException
 -- [(8,8),(8,8),(1,1),(2,2),(3,3)...
 -- ...
 registerB
-  :: (Undefined a, Bundle a)
-  => Clock domain gated
-  -> Reset domain synchronous
+  :: ( KnownDomain tag dom
+     , Undefined a
+     , Bundle a )
+  => Clock tag enabled
+  -> Reset tag synchronous
   -> a
-  -> Unbundled domain a
-  -> Unbundled domain a
+  -> Unbundled tag a
+  -> Unbundled tag a
 registerB clk rst i = unbundle Prelude.. register clk rst i Prelude.. bundle
 {-# INLINE registerB #-}
 
 -- | Give a pulse when the 'Signal' goes from 'minBound' to 'maxBound'
 isRising
-  :: (Undefined a, Bounded a, Eq a)
-  => Clock domain gated
-  -> Reset domain synchronous
+  :: ( KnownDomain tag dom
+     , Undefined a
+     , Bounded a
+     , Eq a )
+  => Clock tag enabled
+  -> Reset tag synchronous
   -> a -- ^ Starting value
-  -> Signal domain a
-  -> Signal domain Bool
+  -> Signal tag a
+  -> Signal tag Bool
 isRising clk rst is s = liftA2 edgeDetect prev s
   where
     prev = register clk rst is s
@@ -190,12 +195,15 @@ isRising clk rst is s = liftA2 edgeDetect prev s
 
 -- | Give a pulse when the 'Signal' goes from 'maxBound' to 'minBound'
 isFalling
-  :: (Undefined a, Bounded a, Eq a)
-  => Clock domain gated
-  -> Reset domain synchronous
+  :: ( KnownDomain tag dom
+     , Undefined a
+     , Bounded a
+     , Eq a )
+  => Clock tag enabled
+  -> Reset tag synchronous
   -> a -- ^ Starting value
-  -> Signal domain a
-  -> Signal domain Bool
+  -> Signal tag a
+  -> Signal tag Bool
 isFalling clk rst is s = liftA2 edgeDetect prev s
   where
     prev = register clk rst is s
@@ -206,11 +214,12 @@ isFalling clk rst is s = liftA2 edgeDetect prev s
 -- combined with functions like @'Clash.Explicit.Signal.regEn'@ or
 -- @'Clash.Explicit.Signal.mux'@, in order to delay a register by a known amount.
 riseEvery
-  :: forall domain gated synchronous n
-   . Clock domain gated
-  -> Reset domain synchronous
+  :: forall tag dom enabled synchronous n
+   . KnownDomain tag dom
+  => Clock tag enabled
+  -> Reset tag synchronous
   -> SNat n
-  -> Signal domain Bool
+  -> Signal tag Bool
 riseEvery clk rst SNat = moore clk rst transfer output 0 (pure ())
   where
     output :: Index n -> Bool
@@ -222,12 +231,13 @@ riseEvery clk rst SNat = moore clk rst transfer output 0 (pure ())
 
 -- | Oscillate a @'Bool'@ for a given number of cycles, given the starting state.
 oscillate
-  :: forall domain gated synchronous n
-   . Clock domain gated
-  -> Reset domain synchronous
+  :: forall tag dom enabled synchronous n
+   . KnownDomain tag dom
+  => Clock tag enabled
+  -> Reset tag synchronous
   -> Bool
   -> SNat n
-  -> Signal domain Bool
+  -> Signal tag Bool
 oscillate clk rst begin SNat = moore clk rst transfer snd (0, begin) (pure ())
   where
     transfer :: (Index n, Bool) -> () -> (Index n, Bool)

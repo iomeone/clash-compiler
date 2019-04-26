@@ -1,22 +1,25 @@
 {-|
 Copyright  :  (C) 2013-2016, University of Twente,
-                  2017     , Myrtle Software Ltd, Google Inc.
+                  2017-2019, Myrtle Software Ltd
+                  2017,      Google Inc.
 License    :  BSD2 (see the file LICENSE)
 Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
 -}
 
-{-# LANGUAGE CPP                   #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE MagicHash             #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE CPP                    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DeriveAnyClass         #-}
+{-# LANGUAGE DeriveGeneric          #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE MagicHash              #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TemplateHaskell        #-}
+{-# LANGUAGE TypeFamilies           #-}
 
 {-# LANGUAGE Unsafe #-}
 
@@ -28,24 +31,39 @@ Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
 
 module Clash.Signal.Internal
   ( -- * Datatypes
-    Domain (..)
-  , Signal (..)
+    Signal(..)
   , head#
   , tail#
+    -- * Domains
+  , KnownDomain(..)
+  , ActiveEdge(..)
+  , SActiveEdge(..)
+  , InitBehavior(..)
+  , SInitBehavior(..)
+  , ResetKind(..)
+  , SResetKind(..)
+  , Domain(..)
+  , SDomain(..)
+  , System
+  , XilinxSystem
+  , IntelSystem
     -- * Clocks
   , Clock (..)
   , ClockKind (..)
   , clockPeriod
   , clockEnable
+  , toEnabledClock
     -- ** Clock gating
-  , clockGate
     -- * Resets
-  , Reset (..)
-  , ResetKind (..)
-  , unsafeFromAsyncReset
-  , unsafeToAsyncReset
+  , ResetPolarity(..)
+  , Reset(..)
   , fromSyncReset
-  , unsafeToSyncReset
+  , syncPolarity
+  , toHighPolarity
+  , toLowPolarity
+  , unsafeFromReset
+  , unsafeToActiveHighReset
+  , unsafeToActiveLowReset
     -- * Basic circuits
   , delay#
   , register#
@@ -53,15 +71,14 @@ module Clash.Signal.Internal
     -- * Simulation and testbench functions
   , clockGen
   , tbClockGen
-  , asyncResetGen
-  , syncResetGen
+  , resetGen
     -- * Boolean connectives
   , (.&&.), (.||.)
-    -- * Simulation functions (not synthesisable)
+    -- * Simulation functions (not synthesizable)
   , simulate
     -- ** lazy version
   , simulate_lazy
-    -- * List \<-\> Signal conversion (not synthesisable)
+    -- * List \<-\> Signal conversion (not synthesizable)
   , sample
   , sampleN
   , fromList
@@ -95,12 +112,12 @@ import Control.Applicative        (liftA2, liftA3)
 import Control.DeepSeq            (NFData)
 import Data.Default.Class         (Default (..))
 import GHC.Generics               (Generic)
-import GHC.TypeLits               (KnownNat, KnownSymbol, Nat, Symbol)
+import GHC.TypeLits               (KnownSymbol, Nat, Symbol)
 import Language.Haskell.TH.Syntax (Lift (..))
 import Test.QuickCheck            (Arbitrary (..), CoArbitrary(..), Property,
                                    property)
 
-import Clash.Promoted.Nat         (SNat (..), snatToInteger, snatToNum)
+import Clash.Promoted.Nat         (SNat (..), snatToNum)
 import Clash.Promoted.Symbol      (SSymbol (..))
 import Clash.XException           (Undefined, errorX, deepseqX, defaultSeqX)
 
@@ -110,84 +127,129 @@ import Clash.XException           (Undefined, errorX, deepseqX, defaultSeqX)
 >>> :set -XTypeApplications
 >>> import Clash.Promoted.Nat
 >>> import Clash.XException
->>> type System = Dom "System" 10000
+>>> type System = "System"
 >>> let systemClockGen = clockGen @System
->>> let systemResetGen = asyncResetGen @System
+>>> let systemResetGen = resetGen @System
 >>> import Clash.Explicit.Signal (register)
 >>> let registerS = register
 >>> let registerA = register
 -}
 
 -- * Signal
+data ActiveEdge
+  = Rising
+  | Falling
+
+data SActiveEdge (edge :: ActiveEdge) where
+  SRising  :: SActiveEdge 'Rising
+  SFalling :: SActiveEdge 'Falling
+
+data ResetKind
+  = Asynchronous
+  | Synchronous
+
+data SResetKind (resetKind :: ResetKind) where
+  SAsynchronous :: SResetKind 'Asynchronous
+  SSynchronous  :: SResetKind 'Synchronous
+
+data InitBehavior
+  = Undefined
+  | Defined
+
+data SInitBehavior (init :: InitBehavior) where
+  SUndefined :: SInitBehavior 'Undefined
+  SDefined :: SInitBehavior 'Defined
 
 -- | A domain with a name (@Symbol@) and a clock period (@Nat@) in /ps/
-data Domain = Dom { domainName :: Symbol, clkPeriod :: Nat }
+data Domain
+  = Domain
+  { _tag :: Symbol
+  -- ^ Domain name
+  , _period :: Nat
+  -- ^ Period of clock in /ps/
+  , _edge :: ActiveEdge
+  -- ^ Determines which edge of the clock registers are sensitive to
+  , _reset :: ResetKind
+  -- ^ Determines how components with reset lines respond to changes
+  , _init :: InitBehavior
+  -- ^ Determines the initial (or "power up") value of various components
+  }
   deriving (Typeable)
 
+-- | GADT version of 'Domain'
+data SDomain (tag :: Symbol) (conf :: Domain) where
+  SDomain
+    :: SSymbol tag
+    -- Domain name ^
+    -> SNat period
+    -- Period of clock in /ps/ ^
+    -> SActiveEdge edge
+    -- Determines which edge of the clock registers are sensitive to ^
+    -> SResetKind reset
+    -- Determines how components with reset lines respond to changes ^
+    -> SInitBehavior init
+    -- Determines the initial (or "power up") value of various components ^
+    -> SDomain tag ('Domain tag period edge reset init)
+
+-- | TODO: docs
+class KnownSymbol tag => KnownDomain (tag :: Symbol) (conf :: Domain) | tag -> conf where
+  knownDomain :: SSymbol tag -> SDomain tag conf
+
+-- | A /clock/ (and /reset/) tag with clocks running at 100 MHz
+instance KnownDomain System ('Domain System 10000 'Rising 'Asynchronous 'Defined) where
+  knownDomain tag = SDomain tag SNat SRising SAsynchronous SDefined
+
+-- | System instance with defaults set for Xilinx FPGAs
+instance KnownDomain XilinxSystem ('Domain XilinxSystem 10000 'Rising 'Synchronous 'Defined) where
+  knownDomain tag = SDomain tag SNat SRising SSynchronous SDefined
+
+-- | System instance with defaults set for Intel FPGAs
+instance KnownDomain IntelSystem ('Domain IntelSystem 10000 'Rising 'Asynchronous 'Defined) where
+  knownDomain tag = SDomain tag SNat SRising SAsynchronous SDefined
+
+type System = "System"
+type IntelSystem = "IntelSystem"
+type XilinxSystem = "XilinxSystem"
+
 infixr 5 :-
-{- | Clash has synchronous 'Signal's in the form of:
-
-@
-'Signal' (domain :: 'Domain') a
-@
-
-Where /a/ is the type of the value of the 'Signal', for example /Int/ or /Bool/,
-and /domain/ is the /clock-/ (and /reset-/) domain to which the memory elements
-manipulating these 'Signal's belong.
-
-The type-parameter, /domain/, is of the kind 'Domain' which has types of the
-following shape:
-
-@
-data Domain = Dom { domainName :: 'GHC.TypeLits.Symbol', clkPeriod :: 'GHC.TypeLits.Nat' }
-@
-
-Where /domainName/ is a type-level string ('GHC.TypeLits.Symbol') representing
-the name of the /clock-/ (and /reset-/) domain, and /clkPeriod/ is a type-level
-natural number ('GHC.TypeLits.Nat') representing the clock period (in __ps__)
-of the clock lines in the /clock-domain/.
-
-* __NB__: \"Bad things\"™  happen when you actually use a clock period of @0@,
-so do __not__ do that!
-* __NB__: You should be judicious using a clock with period of @1@ as you can
-never create a clock that goes any faster!
+{- |  TODO: docs
 -}
-data Signal (domain :: Domain) a
-  -- | The constructor, @(':-')@, is __not__ synthesisable.
-  = a :- Signal domain a
+data Signal (tag :: Symbol) a
+  -- | The constructor, @(':-')@, is __not__ synthesizable.
+  = a :- Signal tag a
 
-head# :: Signal dom a -> a
+head# :: Signal tag a -> a
 head# (x' :- _ )  = x'
 
-tail# :: Signal dom a -> Signal dom a
+tail# :: Signal tag a -> Signal tag a
 tail# (_  :- xs') = xs'
 
-instance Show a => Show (Signal domain a) where
+instance Show a => Show (Signal tag a) where
   show (x :- xs) = show x ++ " " ++ show xs
 
-instance Lift a => Lift (Signal domain a) where
+instance Lift a => Lift (Signal tag a) where
   lift ~(x :- _) = [| signal# x |]
 
-instance Default a => Default (Signal domain a) where
+instance Default a => Default (Signal tag a) where
   def = signal# def
 
-instance Functor (Signal domain) where
+instance Functor (Signal tag) where
   fmap = mapSignal#
 
 {-# NOINLINE mapSignal# #-}
-mapSignal# :: (a -> b) -> Signal domain a -> Signal domain b
+mapSignal# :: (a -> b) -> Signal tag a -> Signal tag b
 mapSignal# f (a :- as) = f a :- mapSignal# f as
 
-instance Applicative (Signal domain) where
+instance Applicative (Signal tag) where
   pure  = signal#
   (<*>) = appSignal#
 
 {-# NOINLINE signal# #-}
-signal# :: a -> Signal domain a
+signal# :: a -> Signal tag a
 signal# a = let s = a :- s in s
 
 {-# NOINLINE appSignal# #-}
-appSignal# :: Signal domain (a -> b) -> Signal domain a -> Signal domain b
+appSignal# :: Signal tag (a -> b) -> Signal tag a -> Signal tag b
 appSignal# (f :- fs) xs@(~(a :- as)) = f a :- (xs `seq` appSignal# fs as) -- See [NOTE: Lazy ap]
 
 {- NOTE: Lazy ap
@@ -219,10 +281,10 @@ of the second argument is evaluated as soon as the tail of the result is evaluat
 -- There is a good reason there is no 'Monad' instance for 'Signal''.
 --
 -- Is currently treated as 'id' by the Clash compiler.
-joinSignal# :: Signal domain (Signal domain a) -> Signal domain a
+joinSignal# :: Signal tag (Signal tag a) -> Signal tag a
 joinSignal# ~(xs :- xss) = head# xs :- joinSignal# (mapSignal# tail# xss)
 
-instance Num a => Num (Signal domain a) where
+instance Num a => Num (Signal tag a) where
   (+)         = liftA2 (+)
   (-)         = liftA2 (-)
   (*)         = liftA2 (*)
@@ -231,93 +293,89 @@ instance Num a => Num (Signal domain a) where
   signum      = fmap signum
   fromInteger = signal# . fromInteger
 
--- | __NB__: Not synthesisable
+-- | __NB__: Not synthesizable
 --
 -- __NB__: In \"@'foldr' f z s@\":
 --
 -- * The function @f@ should be /lazy/ in its second argument.
 -- * The @z@ element will never be used.
-instance Foldable (Signal domain) where
+instance Foldable (Signal tag) where
   foldr = foldr#
 
 {-# NOINLINE foldr# #-}
--- | __NB__: Not synthesisable
+-- | __NB__: Not synthesizable
 --
 -- __NB__: In \"@'foldr#' f z s@\":
 --
 -- * The function @f@ should be /lazy/ in its second argument.
 -- * The @z@ element will never be used.
-foldr# :: (a -> b -> b) -> b -> Signal domain a -> b
+foldr# :: (a -> b -> b) -> b -> Signal tag a -> b
 foldr# f z (a :- s) = a `f` (foldr# f z s)
 
-instance Traversable (Signal domain) where
+instance Traversable (Signal tag) where
   traverse = traverse#
 
 {-# NOINLINE traverse# #-}
-traverse# :: Applicative f => (a -> f b) -> Signal domain a -> f (Signal domain b)
+traverse# :: Applicative f => (a -> f b) -> Signal tag a -> f (Signal tag b)
 traverse# f (a :- s) = (:-) <$> f a <*> traverse# f s
 
 -- * Clocks and resets
 
--- | Distinction between gated and ungated clocks
+-- | Distinction between enabled and unenabled clocks
 data ClockKind
-  = Source -- ^ A clock signal coming straight from the clock source
-  | Gated  -- ^ A clock signal that has been gated
-  deriving (Eq,Ord,Show,Generic,NFData)
+  = Regular
+  -- ^ A clock signal simply represented as a single bit.
+  | Enabled
+  -- ^ A clock signal that carries an additional signal indicating whether
+  -- it's enabled.
+  deriving (Eq, Ord, Show, Generic, NFData)
 
--- | A clock signal belonging to a @domain@
-data Clock (domain :: Domain) (gated :: ClockKind) where
+-- | A clock signal belonging to a domain
+data Clock (tag :: Symbol) (enabled :: ClockKind) where
   Clock
-    :: (domain ~ ('Dom name period))
-    => SSymbol name
-    -> SNat    period
-    -> Clock domain 'Source
-  GatedClock
-    :: (domain ~ ('Dom name period))
-    => SSymbol name
-    -> SNat    period
-    -> Signal domain Bool
-    -> Clock  domain 'Gated
+    :: SSymbol tag
+    -> Maybe (Signal tag Bool)
+    -> Clock tag enabled
 
 -- | Get the clock period of a 'Clock' (in /ps/) as a 'Num'
 clockPeriod
-  :: Num a
-  => Clock domain gated
+  :: KnownDomain tag dom
+  => Num a
+  => Clock tag enabled
   -> a
-clockPeriod (Clock _ period)        = snatToNum period
-clockPeriod (GatedClock _ period _) = snatToNum period
+clockPeriod (Clock tag _enabled) =
+  case knownDomain tag of
+    SDomain _tag period _edge _reset _init ->
+      snatToNum period
 
--- | If the clock is gated, return 'Just' the /enable/ signal, 'Nothing'
+-- | If the clock is enabled, return 'Just' the /enable/ signal, 'Nothing'
 -- otherwise
 clockEnable
-  :: Clock domain gated
-  -> Maybe (Signal domain Bool)
-clockEnable Clock {}            = Nothing
-clockEnable (GatedClock _ _ en) = Just en
+  :: Clock tag enabled
+  -> Maybe (Signal tag Bool)
+clockEnable (Clock _tag enabled) = enabled
 
-instance Show (Clock domain gated) where
-  show (Clock      nm period)   = show nm ++ show (snatToInteger period)
-  show (GatedClock nm period _) = show nm ++ show (snatToInteger period)
+instance Show (Clock tag enabled) where
+  show (Clock tag _enabled) = "<Clock: " ++ show tag ++ ">"
 
 -- | Clock gating primitive
-clockGate :: Clock domain gated -> Signal domain Bool -> Clock domain 'Gated
-clockGate (Clock nm rt)         en  = GatedClock nm rt en
-clockGate (GatedClock nm rt en) en' = GatedClock nm rt (en .&&. en')
-{-# NOINLINE clockGate #-}
+toEnabledClock
+  :: Clock tag enabled
+  -> Signal tag Bool
+  -> Clock tag 'Enabled
+toEnabledClock (Clock tag _en) en = Clock tag (Just en)
+{-# NOINLINE toEnabledClock #-}
 
 -- | Clock generator for simulations. Do __not__ use this clock generator for
 -- for the /testBench/ function, use 'tbClockGen' instead.
 --
 -- To be used like:
 --
--- @
--- type DomA = Dom \"A\" 1000
--- clkA = clockGen @DomA
--- @
+-- TODO: Docs
 clockGen
-  :: (domain ~ 'Dom nm period, KnownSymbol nm, KnownNat period)
-  => Clock domain 'Source
-clockGen = Clock SSymbol SNat
+  :: KnownDomain tag dom
+  => Clock tag 'Regular
+clockGen = Clock SSymbol Nothing
 {-# NOINLINE clockGen #-}
 
 -- | Clock generator to be used in the /testBench/ function.
@@ -356,176 +414,118 @@ clockGen = Clock SSymbol SNat
 --     done'          = not \<$\> done
 --     clkA1          = 'tbClockGen' \@DomA1 (unsafeSynchronizer clkB2 clkA1 done')
 --     clkB2          = 'tbClockGen' \@DomB2 done'
---     rstA1          = asyncResetGen \@DomA1
---     rstB2          = asyncResetGen \@DomB2
+--     rstA1          = resetGen \@DomA1
+--     rstB2          = resetGen \@DomB2
 -- @
 tbClockGen
-  :: (domain ~ 'Dom nm period, KnownSymbol nm, KnownNat period)
-  => Signal domain Bool
-  -> Clock domain 'Source
-tbClockGen _ = Clock SSymbol SNat
+  :: KnownDomain tag dom
+  => Signal tag Bool
+  -> Clock tag 'Regular
+tbClockGen _ = Clock SSymbol Nothing
 {-# NOINLINE tbClockGen #-}
 
--- | Asynchronous reset generator, for simulations and the /testBench/ function.
---
--- To be used like:
---
--- @
--- type DomA = Dom \"A\" 1000
--- rstA = asyncResetGen @DomA
--- @
---
--- __NB__: Can only be used for components with an /active-high/ reset
--- port, which all __clash-prelude__ components are.
---
--- === __Example__
---
--- @
--- type Dom2 = Dom "dom" 2
--- type Dom7 = Dom "dom" 7
--- type Dom9 = Dom "dom" 9
---
--- topEntity
---   :: Clock Dom2 Source
---   -> Clock Dom7 Source
---   -> Clock Dom9 Source
---   -> Signal Dom7 Integer
---   -> Signal Dom9 Integer
--- topEntity clk2 clk7 clk9 i = delay clk9 (unsafeSynchronizer clk2 clk9 (delay clk2 (unsafeSynchronizer clk7 clk2 (delay clk7 i))))
--- {-# NOINLINE topEntity #-}
---
--- testBench
---   :: Signal Dom9 Bool
--- testBench = done
---   where
---     testInput      = stimuliGenerator clk7 rst7 $(listToVecTH [(1::Integer)..10])
---     expectedOutput = outputVerifier   clk9 rst9
---                         ((undefined :> undefined :> Nil) ++ $(listToVecTH ([2,3,4,5,7,8,9,10]::[Integer])))
---     done           = expectedOutput (topEntity clk2 clk7 clk9 testInput)
---     done'          = not \<$\> done
---     clk2           = tbClockGen \@Dom2 (unsafeSynchronizer clk9 clk2 done')
---     clk7           = tbClockGen \@Dom7 (unsafeSynchronizer clk9 clk7 done')
---     clk9           = tbClockGen \@Dom9 done'
---     rst7           = 'asyncResetGen' \@Dom7
---     rst9           = 'asyncResetGen' \@Dom9
--- @
-asyncResetGen :: Reset domain 'Asynchronous
-asyncResetGen = Async (True :- pure False)
-{-# NOINLINE asyncResetGen #-}
+-- | TODO: Docs
+resetGen
+  :: KnownDomain tag dom
+  => Reset tag 'ActiveHigh
+resetGen = ActiveHighReset (True :- pure False)
+{-# NOINLINE resetGen #-}
 
--- | Synchronous reset generator, for simulations and the /testBench/ function.
---
--- To be used like:
---
--- @
--- type DomA = Dom \"A\" 1000
--- rstA = syncResetGen @DomA
--- @
---
--- __NB__: Can only be used for components with an /active-high/ reset
--- port, which all __clash-prelude__ components are.
-syncResetGen :: ( domain ~ 'Dom n clkPeriod
-                , KnownNat clkPeriod )
-             => Reset domain 'Synchronous
-syncResetGen = Sync (True :- pure False)
-{-# NOINLINE syncResetGen #-}
-
--- | The \"kind\" of reset
---
--- Given a situation where a reset is asserted, and then de-asserted at the
--- active flank of the clock, we can observe the difference between a
--- synchronous reset and an asynchronous reset:
---
--- === Synchronous reset
--- >>> let inputList = [1,2,3,4,5,6,7]
--- >>> let resetList = [False, False, True, True, False, False, False]
---
--- > registerS
--- >   :: Clock domain gated
--- >   -> Reset domain Synchronous
--- >   -> Signal domain Int
--- >   -> Signal domain Int
--- > registerS = register
---
--- >>> let syncReset = unsafeToSyncReset (fromList resetList)
--- >>> sampleN 7 (registerS (clockGen @System) syncReset 0 (fromList inputList))
--- [0,1,2,0,0,5,6]
---
--- === Asynchronous reset
---
--- > registerA
--- >   :: Clock domain gated
--- >   -> Reset domain Asynchronous
--- >   -> Signal domain Int
--- >   -> Signal domain Int
--- > registerA = register
---
--- >>> let asyncReset = unsafeToAsyncReset (fromList resetList)
--- >>> sampleN 7 (registerA (clockGen @System) asyncReset 0 (fromList inputList))
--- [0,1,0,0,0,5,6]
---
--- Notice that the very first value we sample is the power-up value of the
--- register.
-data ResetKind
-  = Synchronous
-  -- ^ Components with a synchronous reset port produce the reset value when:
-  --
-  --     * The reset is asserted during the active flank of the clock to which
-  --       the component is synchronized.
-  | Asynchronous
-  -- ^ Components with an asynchronous reset port produce the reset value when:
-  --
-  --     * Immediately when the reset is asserted.
-  deriving (Eq,Ord,Show,Generic,NFData)
+-- | TODO: Docs
+data ResetPolarity
+  = ActiveHigh
+  | ActiveLow
 
 -- | A reset signal belonging to a @domain@.
 --
 -- The underlying representation of resets is 'Bool'. Note that all components
 -- in the __clash-prelude__ package have an /active-high/ reset port, i.e., the
 -- component is reset when the reset port is 'True'.
-data Reset (domain :: Domain) (synchronous :: ResetKind) where
-  Sync  :: Signal domain Bool -> Reset domain 'Synchronous
-  Async :: Signal domain Bool -> Reset domain 'Asynchronous
+data Reset (tag :: Symbol) (polarity :: ResetPolarity) where
+  ActiveHighReset :: Signal tag Bool -> Reset tag 'ActiveHigh
+  ActiveLowReset :: Signal tag Bool -> Reset tag 'ActiveLow
+
+-- | Convert a reset to an active high reset. Has no effect if reset is already
+-- an active high reset.
+toHighPolarity
+  :: Reset tag polarity
+  -> Reset tag 'ActiveHigh
+toHighPolarity (ActiveHighReset r) = ActiveHighReset r
+toHighPolarity (ActiveLowReset r) = ActiveHighReset (not <$> r)
+{-# INLINE toHighPolarity #-}
+
+-- | Convert a reset to an active low reset. Has no effect if reset is already
+-- an active low reset.
+toLowPolarity
+  :: Reset tag polarity
+  -> Reset tag 'ActiveLow
+toLowPolarity (ActiveHighReset r) = ActiveLowReset (not <$> r)
+toLowPolarity (ActiveLowReset r) = ActiveLowReset r
+{-# INLINE toLowPolarity #-}
+
+-- | Sync polarity of two reset signals. Inverts polarity of second argument,
+-- if polarities are not the same. If they are, it does nothing.
+syncPolarity
+  :: Reset tag1 polarity1
+  -- ^ Reset with desired reset polarity
+  -> Reset tag2 polarity2
+  -- ^ Reset with some reset polarity
+  -> Reset tag2 polarity1
+  -- ^ Same reset as second argument, but with reset polarity of the first
+syncPolarity r1 r2 =
+  case r1 of
+    ActiveHighReset _ ->
+      toHighPolarity r2
+    ActiveLowReset _ ->
+      toLowPolarity r2
+{-# INLINE syncPolarity #-}
 
 -- | 'unsafeFromAsyncReset' is unsafe because it can introduce:
 --
 -- * <Clash-Explicit-Signal.html#metastability meta-stability>
-unsafeFromAsyncReset :: Reset domain 'Asynchronous -> Signal domain Bool
-unsafeFromAsyncReset (Async r) = r
-{-# NOINLINE unsafeFromAsyncReset #-}
-
--- | 'unsafeToAsyncReset' is unsafe because it can introduce:
 --
--- * combinational loops
+-- when used in combination with an asynchronous reset. Use 'fromReset' if
+-- you're using a synchronous one.
+unsafeFromReset
+  :: Reset tag polarity
+  -> Signal tag Bool
+unsafeFromReset (ActiveHighReset r) = r
+unsafeFromReset (ActiveLowReset r) = r
+{-# NOINLINE unsafeFromReset #-}
+
+-- | It is safe to treat synchronous resets as @Bool@ signals
+fromSyncReset
+  :: KnownDomain tag ('Domain tag _period _edge 'Synchronous _init)
+  => Reset tag polarity
+  -> Signal tag Bool
+fromSyncReset (ActiveHighReset r) = r
+fromSyncReset (ActiveLowReset r) = r
+{-# NOINLINE fromSyncReset #-}
+
+-- | 'unsafeToActiveHighReset' is unsafe. For asynchronous resets it is unsafe
+-- because it can introduce combinatorial loops. In case of synchronous resets
+-- it can lead to <Clash-Explicit-Signal.html#metastability meta-stability>
+-- issues in the presence of asynchronous resets.
 --
 -- === __Example__
 --
--- @
--- resetSynchronizer
---   :: Clock domain gated
---   -> Reset domain 'Asynchronous
---   -> Reset domain 'Asynchronous
--- resetSynchronizer clk rst  =
---   let r1 = register clk rst True (pure False)
---       r2 = register clk rst True r1
---   in  'unsafeToAsyncReset' r2
--- @
-unsafeToAsyncReset :: Signal domain Bool -> Reset domain 'Asynchronous
-unsafeToAsyncReset r = Async r
-{-# NOINLINE unsafeToAsyncReset #-}
+-- TODO: Example
+unsafeToActiveHighReset :: Signal tag Bool -> Reset tag 'ActiveHigh
+unsafeToActiveHighReset r = ActiveHighReset r
+{-# NOINLINE unsafeToActiveHighReset #-}
 
--- | It is safe to treat synchronous resets as @Bool@ signals
-fromSyncReset :: Reset domain 'Synchronous -> Signal domain Bool
-fromSyncReset (Sync r) = r
-{-# NOINLINE fromSyncReset #-}
-
--- | 'unsafeToSyncReset' is unsafe because:
---
--- * It can lead to <Clash-Explicit-Signal.html#metastability meta-stability>
+-- | 'unsafeToActiveHighReset' is unsafe. For asynchronous resets it is unsafe
+-- because it can introduce combinatorial loops. In case of synchronous resets
+-- it can lead to <Clash-Explicit-Signal.html#metastability meta-stability>
 -- issues in the presence of asynchronous resets.
-unsafeToSyncReset :: Signal domain Bool -> Reset domain 'Synchronous
-unsafeToSyncReset r = Sync r
-{-# NOINLINE unsafeToSyncReset #-}
+--
+-- === __Example__
+--
+-- TODO: Example
+unsafeToActiveLowReset :: Signal tag Bool -> Reset tag 'ActiveLow
+unsafeToActiveLowReset r = ActiveLowReset r
+{-# NOINLINE unsafeToActiveLowReset #-}
+
 
 infixr 2 .||.
 -- | The above type is a generalisation for:
@@ -569,14 +569,14 @@ infixr 3 .&&.
 
 delay#
   :: Undefined a
-  => Clock  domain gated
+  => Clock tag enabled
   -> a
-  -> Signal domain a
-  -> Signal domain a
-delay# Clock {} dflt =
+  -> Signal tag a
+  -> Signal tag a
+delay# (Clock _tag Nothing) dflt =
   \s -> dflt :- s
 
-delay# (GatedClock _ _ en) dflt =
+delay# (Clock _tag (Just en)) dflt =
     go dflt en
   where
     go o (e :- es) as@(~(x :- xs)) =
@@ -597,49 +597,75 @@ delay# (GatedClock _ _ en) dflt =
 -- the Intel tooling __will ignore the power up value__ and use the reset value
 -- instead.
 register#
-  :: Undefined a
-  => Clock domain gated
-  -> Reset domain synchronous
+  :: forall tag dom enabled a
+   . ( KnownDomain tag dom
+     , Undefined a )
+  => Clock tag enabled
+  -> Reset tag 'ActiveHigh
   -> a
   -- ^ Power up value
   -> a
   -- ^ Reset value
-  -> Signal domain a
-  -> Signal domain a
-register# Clock {} (Sync rst) powerUpVal resetVal =
-    go powerUpVal rst
-  where
-    go o rt@(~(r :- rs)) as@(~(x :- xs)) =
-      let o' = if r then resetVal else x
-          -- [Note: register strictness annotations]
-      in  o `defaultSeqX` o :- (rt `seq` as `seq` go o' rs xs)
+  -> Signal tag a
+  -> Signal tag a
+register# (Clock tag Nothing) rst powerUpVal resetVal =
+  case knownDomain tag of
+    SDomain _tag _period _edge SSynchronous _init ->
+      goSync powerUpVal (unsafeFromReset rst)
+    SDomain _tag _period _edge SAsynchronous _init ->
+      goAsync powerUpVal (unsafeFromReset rst)
+ where
+  goSync
+    :: a
+    -> Signal tag Bool
+    -> Signal tag a
+    -> Signal tag a
+  goSync o rt@(~(r :- rs)) as@(~(x :- xs)) =
+    let o' = if r then resetVal else x
+        -- [Note: register strictness annotations]
+    in  o `defaultSeqX` o :- (rt `seq` as `seq` goSync o' rs xs)
 
-register# Clock {} (Async rst) powerUpVal resetVal =
-    go powerUpVal rst
-  where
-    go o0 (r :- rs) as@(~(x :- xs)) =
-      let o1 = if r then resetVal else o0
-          oN = if r then resetVal else x
-          -- [Note: register strictness annotations]
-      in  o1 `defaultSeqX` o1 :- (as `seq` go oN rs xs)
+  goAsync
+    :: a
+    -> Signal tag Bool
+    -> Signal tag a
+    -> Signal tag a
+  goAsync o0 (r :- rs) as@(~(x :- xs)) =
+    let o1 = if r then resetVal else o0
+        oN = if r then resetVal else x
+        -- [Note: register strictness annotations]
+    in  o1 `defaultSeqX` o1 :- (as `seq` goAsync oN rs xs)
 
-register# (GatedClock _ _ ena) (Sync rst) powerUpVal resetVal =
-    go powerUpVal rst ena
-  where
-    go o rt@(~(r :- rs)) enas@(~(e :- es)) as@(~(x :- xs)) =
-      let oE = if e then x else o
-          oR = if r then resetVal else oE
-          -- [Note: register strictness annotations]
-      in  o `defaultSeqX` o :- (rt `seq` enas `seq` as `seq` go oR rs es xs)
+register# (Clock tag (Just ena)) rst powerUpVal resetVal =
+  case knownDomain tag of
+    SDomain _tag _period _edge SSynchronous _init ->
+      goSync powerUpVal (unsafeFromReset rst) ena
+    SDomain _tag _period _edge SAsynchronous _init ->
+      goAsync powerUpVal (unsafeFromReset rst) ena
+ where
+  goSync
+    :: a
+    -> Signal tag Bool
+    -> Signal tag Bool
+    -> Signal tag a
+    -> Signal tag a
+  goSync o rt@(~(r :- rs)) enas@(~(e :- es)) as@(~(x :- xs)) =
+    let oE = if e then x else o
+        oR = if r then resetVal else oE
+        -- [Note: register strictness annotations]
+    in  o `defaultSeqX` o :- (rt `seq` enas `seq` as `seq` goSync oR rs es xs)
 
-register# (GatedClock _ _ ena) (Async rst) powerUpVal resetVal =
-    go powerUpVal rst ena
-  where
-    go o (r :- rs) enas@(~(e :- es)) as@(~(x :- xs)) =
-      let oR = if r then resetVal else o
-          oE = if r then resetVal else (if e then x else o)
-          -- [Note: register strictness annotations]
-      in  oR `defaultSeqX` oR :- (as `seq` enas `seq` go oE rs es xs)
+  goAsync
+    :: a
+    -> Signal tag Bool
+    -> Signal tag Bool
+    -> Signal tag a
+    -> Signal tag a
+  goAsync o (r :- rs) enas@(~(e :- es)) as@(~(x :- xs)) =
+    let oR = if r then resetVal else o
+        oE = if r then resetVal else (if e then x else o)
+        -- [Note: register strictness annotations]
+    in  oR `defaultSeqX` oR :- (as `seq` enas `seq` goAsync oE rs es xs)
 {-# NOINLINE register# #-}
 
 -- | The above type is a generalisation for:
@@ -720,15 +746,15 @@ infix 4 .>=.
 (.>=.) :: (Ord a, Applicative f) => f a -> f a -> f Bool
 (.>=.) = liftA2 (>=)
 
-instance Fractional a => Fractional (Signal domain a) where
+instance Fractional a => Fractional (Signal tag a) where
   (/)          = liftA2 (/)
   recip        = fmap recip
   fromRational = signal# . fromRational
 
-instance Arbitrary a => Arbitrary (Signal domain a) where
+instance Arbitrary a => Arbitrary (Signal tag a) where
   arbitrary = liftA2 (:-) arbitrary arbitrary
 
-instance CoArbitrary a => CoArbitrary (Signal domain a) where
+instance CoArbitrary a => CoArbitrary (Signal tag a) where
   coarbitrary xs gen = do
     n <- arbitrary
     coarbitrary (take (abs n) (sample_lazy xs)) gen
@@ -743,7 +769,7 @@ instance CoArbitrary a => CoArbitrary (Signal domain a) where
 testFor :: Foldable f => Int -> f Bool -> Property
 testFor n = property . and . take n . sample
 
--- * List \<-\> Signal conversion (not synthesisable)
+-- * List \<-\> Signal conversion (not synthesizable)
 
 -- | The above type is a generalisation for:
 --
@@ -758,7 +784,7 @@ testFor n = property . and . take n . sample
 --
 -- > sample s == [s0, s1, s2, s3, ...
 --
--- __NB__: This function is not synthesisable
+-- __NB__: This function is not synthesizable
 sample :: (Foldable f, Undefined a) => f a -> [a]
 sample = foldr (\a b -> deepseqX a (a : b)) []
 
@@ -775,7 +801,7 @@ sample = foldr (\a b -> deepseqX a (a : b)) []
 --
 -- > sampleN 3 s == [s0, s1, s2]
 --
--- __NB__: This function is not synthesisable
+-- __NB__: This function is not synthesizable
 sampleN :: (Foldable f, Undefined a) => Int -> f a -> [a]
 sampleN n = take n . sample
 
@@ -787,21 +813,21 @@ sampleN n = take n . sample
 -- >>> sampleN 2 (fromList [1,2,3,4,5])
 -- [1,2]
 --
--- __NB__: This function is not synthesisable
-fromList :: Undefined a => [a] -> Signal domain a
+-- __NB__: This function is not synthesizable
+fromList :: Undefined a => [a] -> Signal tag a
 fromList = Prelude.foldr (\a b -> deepseqX a (a :- b)) (errorX "finite list")
 
--- * Simulation functions (not synthesisable)
+-- * Simulation functions (not synthesizable)
 
 -- | Simulate a (@'Clash.Signal.Signal' a -> 'Clash.Signal.Signal' b@) function
 -- given a list of samples of type @a@
 --
--- >>> simulate (register systemClockGen asyncResetGen 8) [1, 1, 2, 3]
+-- >>> simulate (register systemClockGen resetGen 8) [1, 1, 2, 3]
 -- [8,8,1,2,3...
 -- ...
 --
--- __NB__: This function is not synthesisable
-simulate :: (Undefined a, Undefined b) => (Signal domain1 a -> Signal domain2 b) -> [a] -> [b]
+-- __NB__: This function is not synthesizable
+simulate :: (Undefined a, Undefined b) => (Signal tag1 a -> Signal tag2 b) -> [a] -> [b]
 simulate f = sample . f . fromList
 
 -- | The above type is a generalisation for:
@@ -817,7 +843,7 @@ simulate f = sample . f . fromList
 --
 -- > sample s == [s0, s1, s2, s3, ...
 --
--- __NB__: This function is not synthesisable
+-- __NB__: This function is not synthesizable
 sample_lazy :: Foldable f => f a -> [a]
 sample_lazy = foldr (:) []
 
@@ -834,7 +860,7 @@ sample_lazy = foldr (:) []
 --
 -- > sampleN 3 s == [s0, s1, s2]
 --
--- __NB__: This function is not synthesisable
+-- __NB__: This function is not synthesizable
 sampleN_lazy :: Foldable f => Int -> f a -> [a]
 sampleN_lazy n = take n . sample_lazy
 
@@ -846,19 +872,19 @@ sampleN_lazy n = take n . sample_lazy
 -- >>> sampleN 2 (fromList [1,2,3,4,5])
 -- [1,2]
 --
--- __NB__: This function is not synthesisable
-fromList_lazy :: [a] -> Signal domain a
+-- __NB__: This function is not synthesizable
+fromList_lazy :: [a] -> Signal tag a
 fromList_lazy = Prelude.foldr (:-) (error "finite list")
 
--- * Simulation functions (not synthesisable)
+-- * Simulation functions (not synthesizable)
 
 -- | Simulate a (@'Clash.Signal.Signal' a -> 'Clash.Signal.Signal' b@) function
 -- given a list of samples of type @a@
 --
--- >>> simulate (register systemClockGen asyncResetGen 8) [1, 1, 2, 3]
+-- >>> simulate (register systemClockGen resetGen 8) [1, 1, 2, 3]
 -- [8,8,1,2,3...
 -- ...
 --
--- __NB__: This function is not synthesisable
-simulate_lazy :: (Signal domain1 a -> Signal domain2 b) -> [a] -> [b]
+-- __NB__: This function is not synthesizable
+simulate_lazy :: (Signal tag1 a -> Signal tag2 b) -> [a] -> [b]
 simulate_lazy f = sample_lazy . f . fromList_lazy

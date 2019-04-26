@@ -80,7 +80,7 @@ __>>> L.tail $ sampleN 4 $ g systemClockGen (fromList [3..5])__
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Clash.Explicit.ROM.File
-  ( -- * Synchronous ROM synchronised to an arbitrary clock
+  ( -- * Synchronous ROM synchronized to an arbitrary clock
     romFile
   , romFilePow2
     -- * Internal

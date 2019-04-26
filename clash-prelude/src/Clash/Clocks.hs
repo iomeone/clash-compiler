@@ -21,8 +21,8 @@ import Clash.Clocks.Deriving (deriveClocksInstances)
 
 class Clocks t where
   clocks
-    :: Clock pplIn 'Source
-    -> Reset pplIn 'Asynchronous
+    :: Clock tagIn 'Regular
+    -> Reset tagIn 'ActiveHigh
     -> t
 
 deriveClocksInstances 16

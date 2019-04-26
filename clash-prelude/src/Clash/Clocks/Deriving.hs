@@ -32,7 +32,7 @@ derive' n = do
   let clkImpls  = replicate n (clkImpl clk rst)
   let instTuple = TupE $ clkImpls ++ [AppE (VarE 'unsafeCoerce) (VarE rst)]
   let funcBody  = NormalB instTuple
-  let rstPat    = ConP 'Async [VarP rst]
+  let rstPat    = ConP 'ActiveHighReset [VarP rst]
   let instFunc  = FunD (mkName "clocks") [Clause [VarP clk, rstPat] funcBody []]
 
   return $ InstanceD Nothing [] instType' [instFunc, noInline]
@@ -41,7 +41,7 @@ derive' n = do
     -- | Generate type @Clock dom 'Source@ with fresh @dom@ variable
     clkType n' =
       let c = varT $ mkName ("c" ++ show n') in
-      [t| Clock $c 'Source |]
+      [t| Clock $c 'Regular |]
 
     -- | Generate type @Signal dom 'Bool@ with fresh @dom@ variable
     lockType =
@@ -49,7 +49,7 @@ derive' n = do
       [t| Signal $c Bool |]
 
     clkImpl (VarE -> clk) (VarE -> rst) =
-      AppE (VarE 'unsafeCoerce) (AppE (AppE (VarE 'clockGate) clk) rst)
+      AppE (VarE 'unsafeCoerce) (AppE (AppE (VarE 'toEnabledClock) clk) rst)
 
 -- Derive instances for up to and including to /n/ clocks
 deriveClocksInstances :: Int -> Q [Dec]

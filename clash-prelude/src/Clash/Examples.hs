@@ -81,8 +81,10 @@ encoderCase enable binaryIn | enable =
     0x8000 -> 0xF
 encoderCase _ _ = 0
 
-upCounter :: HiddenClockReset domain gated synchronous
-          => Signal domain Bool -> Signal domain (Unsigned 8)
+upCounter 
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag (Unsigned 8)
 upCounter enable = s
   where
     s = register 0 (mux enable (s + 1) s)
@@ -95,12 +97,16 @@ upCounterLdT s (ld,en,dIn) = (s',s)
        | en        = s + 1
        | otherwise = s
 
-upCounterLd :: HiddenClockReset domain gated synchronous
-            => Signal domain (Bool,Bool,Unsigned 8) -> Signal domain (Unsigned 8)
+upCounterLd
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag (Bool, Bool, Unsigned 8)
+  -> Signal tag (Unsigned 8)
 upCounterLd = mealy upCounterLdT 0
 
-upDownCounter :: HiddenClockReset domain gated synchronous
-              => Signal domain Bool -> Signal domain (Unsigned 8)
+upDownCounter
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag (Unsigned 8)
 upDownCounter upDown = s
   where
     s = register 0 (mux upDown (s + 1) (s - 1))
@@ -110,8 +116,9 @@ lfsrF' s = pack feedback ++# slice d15 d1 s
   where
     feedback = s!5 `xor` s!3 `xor` s!2 `xor` s!0
 
-lfsrF :: HiddenClockReset domain gated synchronous
-      => BitVector 16 -> Signal domain Bit
+lfsrF
+  :: HiddenClockReset tag enabled polarity dom
+  => BitVector 16 -> Signal tag Bit
 lfsrF seed = msb <$> r
   where r = register seed (lfsrF' <$> r)
 
@@ -126,17 +133,24 @@ lfsrGP taps regs = zipWith xorM taps (fb +>> regs)
     xorM i x | i         =  x `xor` fb
              | otherwise = x
 
-lfsrG :: HiddenClockReset domain gated synchronous => BitVector 16 -> Signal domain Bit
+lfsrG
+  :: HiddenClockReset tag enabled polarity dom
+  => BitVector 16
+  -> Signal tag Bit
 lfsrG seed = last (unbundle r)
   where r = register (unpack seed) (lfsrGP (unpack 0b0011010000000000) <$> r)
 
-grayCounter :: HiddenClockReset domain gated synchronous
-            => Signal domain Bool -> Signal domain (BitVector 8)
+grayCounter
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag (BitVector 8)
 grayCounter en = gray <$> upCounter en
   where gray xs = pack (msb xs) ++# xor (slice d7 d1 xs) (slice d6 d0 xs)
 
-oneHotCounter :: HiddenClockReset domain gated synchronous
-              => Signal domain Bool -> Signal domain (BitVector 8)
+oneHotCounter
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag (BitVector 8)
 oneHotCounter enable = s
   where
     s = register 1 (mux enable (rotateL <$> s <*> 1) s)
@@ -153,8 +167,12 @@ crcT bv dIn = replaceBit 0  dInXor
     rotated = rotateL bv 1
     fb      = msb bv
 
-crc :: HiddenClockReset domain gated synchronous
-    => Signal domain Bool -> Signal domain Bool -> Signal domain Bit -> Signal domain (BitVector 16)
+crc
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag Bool
+  -> Signal tag Bit
+  -> Signal tag (BitVector 16)
 crc enable ld dIn = s
   where
     s = register 0xFFFF (mux enable (mux ld 0xFFFF (crcT <$> s <*> dIn)) s)
@@ -370,9 +388,9 @@ Using `register`:
 
 @
 upCounter
-  :: HiddenClockReset domain gated synchronous
-  => Signal domain Bool
-  -> Signal domain (Unsigned 8)
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag (Unsigned 8)
 upCounter enable = s
   where
     s = `register` 0 (`mux` enable (s + 1) s)
@@ -384,9 +402,9 @@ Using `mealy`:
 
 @
 upCounterLd
-  :: HiddenClockReset domain gated synchronous
-  => Signal domain (Bool,Bool,Unsigned 8)
-  -> Signal domain (Unsigned 8)
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag (Bool,Bool,Unsigned 8)
+  -> Signal tag (Unsigned 8)
 upCounterLd = `mealy` upCounterLdT 0
 
 upCounterLdT s (ld,en,dIn) = (s',s)
@@ -402,9 +420,9 @@ Using `register` and `mux`:
 
 @
 upDownCounter
-  :: HiddenClockReset domain gated synchronous
-  => Signal domain Bool
-  -> Signal domain (Unsigned 8)
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag (Unsigned 8)
 upDownCounter upDown = s
   where
     s = `register` 0 (`mux` upDown (s + 1) (s - 1))
@@ -412,7 +430,7 @@ upDownCounter upDown = s
 
 The following property holds:
 
-prop> \en -> en ==> testFor 1000 (upCounter (pure en) .==. upDownCounter (pure en))
+prop> \en -> en ==> testFor 1000 (upCounter (pure en) .==. upDownCounter (pure en) :: Signal "System" Bool)
 
 = LFSR
 
@@ -425,9 +443,9 @@ lfsrF' s = 'pack' feedback '++#' 'slice' d15 d1 s
     feedback = s'!'5 ``xor`` s'!'3 ``xor`` s'!'2 ``xor`` s'!'0
 
 lfsrF
-  :: HiddenClockReset domain gated synchronous
+  :: HiddenClockReset tag enabled polarity dom
   => BitVector 16
-  -> Signal domain Bit
+  -> Signal tag Bit
 lfsrF seed = 'msb' '<$>' r
   where r = 'register' seed (lfsrF' '<$>' r)
 @
@@ -446,14 +464,14 @@ lfsrGP taps regs = 'zipWith' xorM taps (fb '+>>' regs)
 Then we can instantiate a 16-bit LFSR as follows:
 
 @
-lfsrG :: HiddenClockReset domain gated synchronous => BitVector 16 -> Signal domain Bit
+lfsrG :: HiddenClockReset tag enabled polarity dom => BitVector 16 -> Signal tag Bit
 lfsrG seed = 'last' ('unbundle' r)
   where r = 'register' ('unpack' seed) (lfsrGP ('unpack' 0b0011010000000000) '<$>' r)
 @
 
 The following property holds:
 
-prop> testFor 100 (lfsrF 0xACE1 .==. lfsrG 0x4645)
+prop> testFor 100 (lfsrF 0xACE1 .==. lfsrG 0x4645 :: Signal "System" Bool)
 
 = Gray counter
 
@@ -461,9 +479,9 @@ Using the previously defined @upCounter@:
 
 @
 grayCounter
-  :: HiddenClockReset domain gated synchronous
-  => Signal domain Bool
-  -> Signal domain (BitVector 8)
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag (BitVector 8)
 grayCounter en = gray '<$>' upCounter en
   where gray xs = 'pack' ('msb' xs) '++#' 'xor' ('slice' d7 d1 xs) ('slice' d6 d0 xs)
 @
@@ -474,9 +492,9 @@ Basically a barrel-shifter:
 
 @
 oneHotCounter
-  :: HiddenClockReset domain gated synchronous
-  => Signal domain Bool
-  -> Signal domain (BitVector 8)
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag (BitVector 8)
 oneHotCounter enable = s
   where
     s = 'register' 1 ('mux' enable ('rotateL' '<$>' s '<*>' 1) s)
@@ -513,11 +531,11 @@ crcT bv dIn = 'replaceBit' 0  dInXor
     fb      = 'msb' bv
 
 crc
-  :: HiddenClockReset domain gated synchronous
-  => Signal domain Bool
-  -> Signal domain Bool
-  -> Signal domain Bit
-  -> Signal domain (BitVector 16)
+  :: HiddenClockReset tag enabled polarity dom
+  => Signal tag Bool
+  -> Signal tag Bool
+  -> Signal tag Bit
+  -> Signal tag (BitVector 16)
 crc enable ld dIn = s
   where
     s = 'register' 0xFFFF ('mux' enable ('mux' ld 0xFFFF (crcT '<$>' s '<*>' dIn)) s)

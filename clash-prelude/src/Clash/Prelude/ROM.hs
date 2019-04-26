@@ -21,7 +21,7 @@ module Clash.Prelude.ROM
   ( -- * Asynchronous ROM
     asyncRom
   , asyncRomPow2
-    -- * Synchronous ROM synchronised to an arbitrary clock
+    -- * Synchronous ROM synchronized to an arbitrary clock
   , rom
   , romPow2
     -- * Internal
@@ -44,12 +44,16 @@ import           Clash.Sized.Vector   (Vec, length, toList)
 --
 -- * See "Clash.Sized.Fixed#creatingdatafiles" and "Clash.Prelude.BlockRam#usingrams"
 -- for ideas on how to use ROMs and RAMs
-asyncRom :: (KnownNat n, Enum addr)
-         => Vec n a -- ^ ROM content
-                    --
-                    -- __NB:__ must be a constant
-         -> addr    -- ^ Read address @rd@
-         -> a       -- ^ The value of the ROM at address @rd@
+asyncRom
+  :: (KnownNat n, Enum addr)
+  => Vec n a
+  -- ^ ROM content
+  --
+  -- __NB:__ must be a constant
+  -> addr
+  -- ^ Read address @rd@
+  -> a
+  -- ^ The value of the ROM at address @rd@
 asyncRom = \content rd -> asyncRom# content (fromEnum rd)
 {-# INLINE asyncRom #-}
 
@@ -59,22 +63,28 @@ asyncRom = \content rd -> asyncRom# content (fromEnum rd)
 --
 -- * See "Clash.Sized.Fixed#creatingdatafiles" and "Clash.Prelude.BlockRam#usingrams"
 -- for ideas on how to use ROMs and RAMs
-asyncRomPow2 :: KnownNat n
-             => Vec (2^n) a -- ^ ROM content
-                            --
-                            -- __NB:__ must be a constant
-             -> Unsigned n  -- ^ Read address @rd@
-             -> a           -- ^ The value of the ROM at address @rd@
+asyncRomPow2
+  :: KnownNat n
+  => Vec (2^n) a -- ^ ROM content
+  --
+  -- __NB:__ must be a constant
+  -> Unsigned n
+  -- ^ Read address @rd@
+  -> a
+  -- ^ The value of the ROM at address @rd@
 asyncRomPow2 = asyncRom
 {-# INLINE asyncRomPow2 #-}
 
 -- | asyncROM primitive
-asyncRom# :: KnownNat n
-          => Vec n a  -- ^ ROM content
-                      --
-                      -- __NB:__ must be a constant
-          -> Int      -- ^ Read address @rd@
-          -> a        -- ^ The value of the ROM at address @rd@
+asyncRom#
+  :: KnownNat n
+  => Vec n a  -- ^ ROM content
+  --
+  -- __NB:__ must be a constant
+  -> Int
+  -- ^ Read address @rd@
+  -> a
+  -- ^ The value of the ROM at address @rd@
 asyncRom# content rd = arr ! rd
   where
     szI = length content
@@ -91,12 +101,17 @@ asyncRom# content rd = arr ! rd
 -- * See "Clash.Sized.Fixed#creatingdatafiles" and "Clash.Prelude.BlockRam#usingrams"
 -- for ideas on how to use ROMs and RAMs
 rom
-  :: (KnownNat n, KnownNat m, HiddenClock domain gated)
-  => Vec n a               -- ^ ROM content
-                           --
-                           -- __NB:__ must be a constant
-  -> Signal domain (Unsigned m)   -- ^ Read address @rd@
-  -> Signal domain a              -- ^ The value of the ROM at address @rd@
+  :: ( KnownNat n
+     , KnownNat m
+     , HiddenClock tag gated dom )
+  => Vec n a
+  -- ^ ROM content
+  --
+  -- __NB:__ must be a constant
+  -> Signal tag (Unsigned m)
+  -- ^ Read address @rd@
+  -> Signal tag a
+  -- ^ The value of the ROM at address @rd@
 rom = hideClock E.rom
 {-# INLINE rom #-}
 
@@ -110,11 +125,13 @@ rom = hideClock E.rom
 -- * See "Clash.Sized.Fixed#creatingdatafiles" and "Clash.Prelude.BlockRam#usingrams"
 -- for ideas on how to use ROMs and RAMs
 romPow2
-  :: (KnownNat n, HiddenClock domain gated)
-  => Vec (2^n) a         -- ^ ROM content
-                         --
-                         -- __NB:__ must be a constant
-  -> Signal domain (Unsigned n) -- ^ Read address @rd@
-  -> Signal domain a            -- ^ The value of the ROM at address @rd@
+  :: ( KnownNat n
+     , HiddenClock tag gated dom )
+  => Vec (2^n) a
+  -- ^ ROM content
+  --
+  -- __NB:__ must be a constant
+  -> Signal tag (Unsigned n) -- ^ Read address @rd@
+  -> Signal tag a            -- ^ The value of the ROM at address @rd@
 romPow2 = hideClock E.romPow2
 {-# INLINE romPow2 #-}

@@ -5,7 +5,7 @@ Copyright   :  (C) 2015-2016, University of Twente,
 License     :  BSD2 (see the file LICENSE)
 Maintainer  :  Christiaan Baaij <christiaan.baaij@gmail.com>
 
-Synchronizer circuits for safe clock domain crossings
+Synchronizer circuits for safe clock tag crossings
 -}
 
 {-# LANGUAGE CPP                   #-}
@@ -45,18 +45,18 @@ import Clash.Explicit.Signal
   (Clock, Reset, Signal, register, unsafeSynchronizer)
 import Clash.Promoted.Nat          (SNat (..), pow2SNat)
 import Clash.Promoted.Nat.Literals (d0)
-import Clash.Signal                (mux)
+import Clash.Signal                (mux, KnownDomain)
 import Clash.Sized.BitVector       (BitVector, (++#))
 import Clash.XException            (Undefined)
 
 -- * Dual flip-flop synchronizer
 
--- | Synchroniser based on two sequentially connected flip-flops.
+-- | Synchronizer based on two sequentially connected flip-flops.
 --
---  * __NB__: This synchroniser can be used for __bit__-synchronization.
+--  * __NB__: This synchronizer can be used for __bit__-synchronization.
 --
---  * __NB__: Although this synchroniser does reduce metastability, it does
---  not guarantee the proper synchronisation of a whole __word__. For
+--  * __NB__: Although this synchronizer does reduce metastability, it does
+--  not guarantee the proper synchronization of a whole __word__. For
 --  example, given that the output is sampled twice as fast as the input is
 --  running, and we have two samples in the input stream that look like:
 --
@@ -71,33 +71,37 @@ import Clash.XException            (Undefined)
 --      Where the level-change of the __msb__ was not captured, but the level
 --      change of the __lsb__s were.
 --
---      If you want to have /safe/ __word__-synchronisation use
+--      If you want to have /safe/ __word__-synchronization use
 --      'asyncFIFOSynchronizer'.
 dualFlipFlopSynchronizer
-  :: Undefined a
-  => Clock domain1 gated1
-  -- ^ 'Clock' to which the incoming  data is synchronised
-  -> Clock domain2 gated2
-  -- ^ 'Clock' to which the outgoing data is synchronised
-  -> Reset domain2 synchronous
+  :: ( Undefined a
+     , KnownDomain tag1 conf1
+     , KnownDomain tag2 conf2 )
+  => Clock tag1 enabled1
+  -- ^ 'Clock' to which the incoming  data is synchronized
+  -> Clock tag2 enabled2
+  -- ^ 'Clock' to which the outgoing data is synchronized
+  -> Reset tag2 polarity
   -- ^ 'Reset' for registers on the outgoing domain
   -> a
-  -- ^ Initial value of the two synchronisation registers
-  -> Signal domain1 a -- ^ Incoming data
-  -> Signal domain2 a -- ^ Outgoing, synchronised, data
+  -- ^ Initial value of the two synchronization registers
+  -> Signal tag1 a -- ^ Incoming data
+  -> Signal tag2 a -- ^ Outgoing, synchronized, data
 dualFlipFlopSynchronizer clk1 clk2 rst i =
   register clk2 rst i . register clk2 rst i . unsafeSynchronizer clk1 clk2
 
 -- * Asynchronous FIFO synchronizer
 
 fifoMem
-  :: Clock wdomain wgated
-  -> Clock rdomain rgated
+  :: ( KnownDomain wtag conf1
+     , KnownDomain rtag conf2 )
+  => Clock wtag wenabled
+  -> Clock rtag renabled
   -> SNat addrSize
-  -> Signal wdomain Bool
-  -> Signal rdomain (BitVector addrSize)
-  -> Signal wdomain (Maybe (BitVector addrSize, a))
-  -> Signal rdomain a
+  -> Signal wtag Bool
+  -> Signal rtag (BitVector addrSize)
+  -> Signal wtag (Maybe (BitVector addrSize, a))
+  -> Signal rtag a
 fifoMem wclk rclk addrSize@SNat full raddr writeM =
   asyncRam wclk rclk
            (pow2SNat addrSize)
@@ -133,27 +137,29 @@ isFull addrSize@SNat ptr s_ptr = case leTrans @1 @2 @addrSize of
         a2 = SNat @(addrSize - 2)
     in  ptr == (complement (slice addrSize a1 s_ptr) ++# slice a2 d0 s_ptr)
 
--- | Synchroniser implemented as a FIFO around an asynchronous RAM. Based on the
+-- | Synchronizer implemented as a FIFO around an asynchronous RAM. Based on the
 -- design described in "Clash.Tutorial#multiclock", which is itself based on the
 -- design described in <http://www.sunburst-design.com/papers/CummingsSNUG2002SJ_FIFO1.pdf>.
 --
--- __NB__: This synchroniser can be used for __word__-synchronization.
+-- __NB__: This synchronizer can be used for __word__-synchronization.
 asyncFIFOSynchronizer
-  :: (2 <= addrSize)
+  :: ( KnownDomain wtag wconf
+     , KnownDomain rtag rconf
+     , 2 <= addrSize )
   => SNat addrSize
   -- ^ Size of the internally used addresses, the  FIFO contains @2^addrSize@
   -- elements.
-  -> Clock wdomain wgated
-  -- ^ 'Clock' to which the write port is synchronised
-  -> Clock rdomain rgated
-  -- ^ 'Clock' to which the read port is synchronised
-  -> Reset wdomain synchronous
-  -> Reset rdomain synchronous
-  -> Signal rdomain Bool
+  -> Clock wtag wenabled
+  -- ^ 'Clock' to which the write port is synchronized
+  -> Clock rtag renabled
+  -- ^ 'Clock' to which the read port is synchronized
+  -> Reset wtag polarity
+  -> Reset rtag polarity
+  -> Signal rtag Bool
   -- ^ Read request
-  -> Signal wdomain (Maybe a)
+  -> Signal wtag (Maybe a)
   -- ^ Element to insert
-  -> (Signal rdomain a, Signal rdomain Bool, Signal wdomain Bool)
+  -> (Signal rtag a, Signal rtag Bool, Signal wtag Bool)
   -- ^ (Oldest element in the FIFO, @empty@ flag, @full@ flag)
 asyncFIFOSynchronizer addrSize@SNat wclk rclk wrst rrst rinc wdataM =
     (rdata,rempty,wfull)

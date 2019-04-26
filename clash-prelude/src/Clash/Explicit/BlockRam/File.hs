@@ -88,7 +88,7 @@ __>>> L.tail $ sampleN 4 $ g systemClockGen (fromList [3..5])__
 {-# OPTIONS_GHC -fno-cpr-anal #-}
 
 module Clash.Explicit.BlockRam.File
-  ( -- * BlockRAM synchronised to an arbitrary clock
+  ( -- * BlockRAM synchronized to an arbitrary clock
     blockRamFile
   , blockRamFilePow2
     -- * Internal
@@ -256,7 +256,7 @@ blockRamFile# clk _sz file rd wen = case clockEnable clk of
     ramI    = V.fromList content
 {-# NOINLINE blockRamFile# #-}
 
--- | __NB:__ Not synthesisable
+-- | __NB:__ Not synthesizable
 initMem :: KnownNat n => FilePath -> IO [BitVector n]
 initMem = fmap (map parseBV . lines) . readFile
   where

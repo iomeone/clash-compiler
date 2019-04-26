@@ -21,7 +21,7 @@ module Clash.Explicit.Mealy
 where
 
 import           Clash.Explicit.Signal
-  (Bundle (..), Clock, Reset, Signal, register)
+  (KnownDomain, Bundle (..), Clock, Reset, Signal, register)
 import           Clash.XException      (Undefined)
 
 {- $setup
@@ -78,15 +78,16 @@ let macT s (x,y) = (s',s)
 --     s2 = 'mealy' clk rst mac 0 ('bundle' (b,y))
 -- @
 mealy
-  :: Undefined s
-  => Clock dom gated
+  :: ( KnownDomain tag dom
+     , Undefined s )
+  => Clock tag gated
   -- ^ 'Clock' to synchronize to
-  -> Reset dom synchronous
+  -> Reset tag synchronous
   -> (s -> i -> (s,o))
   -- ^ Transfer function in mealy machine form: @state -> input -> (newstate,output)@
   -> s
   -- ^ Initial state
-  -> (Signal dom i -> Signal dom o)
+  -> (Signal tag i -> Signal tag o)
   -- ^ Synchronous sequential function with input and output matching that
   -- of the mealy machine
 mealy clk rst f iS =
@@ -122,16 +123,17 @@ mealy clk rst f iS =
 --     (i2,b2) = 'mealyB' clk rst f 3 (i1,c)
 -- @
 mealyB
-  :: ( Undefined s
+  :: ( KnownDomain tag dom
+     , Undefined s
      , Bundle i
      , Bundle o )
-  => Clock dom gated
-  -> Reset dom synchronous
+  => Clock tag gated
+  -> Reset tag synchronous
   -> (s -> i -> (s,o))
   -- ^ Transfer function in mealy machine form: @state -> input -> (newstate,output)@
   -> s
   -- ^ Initial state
-  -> (Unbundled dom i -> Unbundled dom o)
+  -> (Unbundled tag i -> Unbundled tag o)
  -- ^ Synchronous sequential function with input and output matching that
  -- of the mealy machine
 mealyB clk rst f iS i = unbundle (mealy clk rst f iS (bundle i))
