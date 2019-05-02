@@ -26,7 +26,6 @@ module Clash.Backend.Verilog
   )
 where
 
-import           Control.Applicative                  ((<*), (*>))
 import qualified Control.Applicative                  as A
 import           Control.Lens                         ((+=),(-=),(.=),(%=), makeLenses, use)
 import           Control.Monad                        (forM)

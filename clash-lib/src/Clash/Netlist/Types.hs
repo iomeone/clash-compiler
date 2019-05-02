@@ -8,6 +8,7 @@
   Type and instance definitions for Netlist modules
 -}
 
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -28,7 +29,9 @@ module Clash.Netlist.Types
 where
 
 import Control.DeepSeq
+#if !MIN_VERSION_base(4,13,0)
 import Control.Monad.Fail                   (MonadFail)
+#endif
 import Control.Monad.State                  (State)
 import Control.Monad.State.Strict           (MonadIO, MonadState, StateT)
 import Data.Bits                            (testBit)

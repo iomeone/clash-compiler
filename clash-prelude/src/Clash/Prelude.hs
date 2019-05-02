@@ -146,7 +146,6 @@ where
 import           Control.Applicative
 import           Data.Bits
 import           Data.Default.Class
-import           GHC.Generics                (Generic, Generic1)
 import           GHC.TypeLits
 import           GHC.TypeLits.Extra
 import           Language.Haskell.TH.Syntax  (Lift(..))

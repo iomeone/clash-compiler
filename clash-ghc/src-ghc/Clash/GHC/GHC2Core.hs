@@ -82,7 +82,7 @@ import PrelNames  (tYPETyConKey)
 import OccName    (occNameString)
 import Outputable (showPpr)
 import Pair       (Pair (..))
-import SrcLoc     (SrcSpan, isGoodSrcSpan)
+import SrcLoc     (isGoodSrcSpan)
 import TyCon      (AlgTyConRhs (..), TyCon, tyConName,
                    algTyConRhs, isAlgTyCon, isFamilyTyCon,
                    isFunTyCon, isNewTyCon,

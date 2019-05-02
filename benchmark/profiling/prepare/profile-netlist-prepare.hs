@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 
 import           System.Environment           (getArgs)
-import           System.FilePath              (FilePath)
 
 import           Clash.Driver                 (createTemporaryClashDirectory)
 import           Control.Exception            (finally)

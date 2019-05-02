@@ -108,7 +108,7 @@ module Clash.Signal.BiSignal (
   , veryUnsafeToBiSignalIn
   ) where
 
-import           Data.Maybe                 (Maybe,fromMaybe,fromJust,isJust)
+import           Data.Maybe                 (fromMaybe,fromJust,isJust)
 import           Data.List                  (intercalate)
 
 import           Clash.Class.BitPack        (BitPack (..))

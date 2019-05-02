@@ -40,7 +40,7 @@ import           System.FilePath                  ((</>), (<.>))
 import           Text.Read                        (readMaybe)
 
 import           Outputable                       (ppr, showSDocUnsafe)
-import           SrcLoc                           (SrcSpan,isGoodSrcSpan,noSrcSpan)
+import           SrcLoc                           (isGoodSrcSpan)
 
 import           Clash.Annotations.Primitive      (extractPrim)
 import           Clash.Annotations.BitRepresentation.ClashLib

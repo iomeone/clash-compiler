@@ -8,8 +8,11 @@
   Utilities for converting Core Type/Term to Netlist datatypes
 -}
 
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE FlexibleContexts    #-}
+#if !MIN_VERSION_ghc(8,8,0)
 {-# LANGUAGE MonadFailDesugaring #-}
+#endif
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -34,12 +37,13 @@ import qualified Data.List               as List
 import           Data.Maybe              (catMaybes,fromMaybe,isNothing)
 import           Data.Monoid             (First (..))
 import           Text.Printf             (printf)
+#if !(MIN_VERSION_base(4,11,0))
 import           Data.Semigroup          ((<>))
+#endif
 import           Data.Text               (Text)
 import qualified Data.Text               as Text
 import           Data.Text.Prettyprint.Doc (Doc)
 
-import           SrcLoc                  (SrcSpan)
 
 import           Clash.Annotations.BitRepresentation.ClashLib
   (coreToType')

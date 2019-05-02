@@ -39,7 +39,7 @@ import           Data.Char                       (isDigit)
 import           Data.Generics.Uniplate.DataOnly (transform)
 import           Data.Data                       (Data)
 import           Data.Typeable                   (Typeable)
-import           Data.List                       (foldl', lookup, nub)
+import           Data.List                       (foldl', nub)
 import           Data.Maybe                      (catMaybes, listToMaybe, mapMaybe)
 import qualified Data.Text                       as Text
 import qualified Data.Time.Clock                 as Clock
