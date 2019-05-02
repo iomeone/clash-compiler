@@ -425,6 +425,7 @@ coreToTerm primMap unlocs srcsp coreExpr = Reader.runReaderT (term coreExpr) src
 #if MIN_VERSION_ghc(8,7,0)
       LitString  fs  -> C.StringLiteral (Char8.unpack fs)
       LitChar    c   -> C.CharLiteral c
+      LitRubbish     -> error "TODO: what to do with LitRubbish?"
 #else
       MachStr    fs  -> C.StringLiteral (Char8.unpack fs)
       MachChar   c   -> C.CharLiteral c
